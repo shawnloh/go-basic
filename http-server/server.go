@@ -1,0 +1,63 @@
+package poker
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+)
+
+type Player struct {
+	Name string
+	Wins int
+}
+
+type PlayerStore interface {
+	GetPlayerScore(name string) int
+	RecordWin(name string)
+	GetLeague() League
+}
+
+type PlayerServer struct {
+	store PlayerStore
+	http.Handler
+}
+
+const jsonContentType = "application/json"
+
+func NewPlayerServer(store PlayerStore) *PlayerServer {
+	p := new(PlayerServer)
+	p.store = store
+	router := http.NewServeMux()
+	router.Handle("/league", http.HandlerFunc(p.leagueHandler))
+	router.Handle("/players/", http.HandlerFunc(p.playersHandler))
+	p.Handler = router
+	return p
+}
+
+func (ps *PlayerServer) leagueHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("content-type", jsonContentType)
+	json.NewEncoder(w).Encode(ps.store.GetLeague())
+}
+
+func (ps *PlayerServer) playersHandler(w http.ResponseWriter, r *http.Request) {
+	player := r.URL.Path[len("/players/"):]
+	switch r.Method {
+	case http.MethodPost:
+		ps.processWin(w, player)
+	case http.MethodGet:
+		ps.showScore(w, player)
+	}
+}
+
+func (ps *PlayerServer) showScore(w http.ResponseWriter, player string) {
+	score := ps.store.GetPlayerScore(player)
+	if score == 0 {
+		w.WriteHeader(http.StatusNotFound)
+	}
+	fmt.Fprint(w, ps.store.GetPlayerScore(player))
+}
+
+func (ps *PlayerServer) processWin(w http.ResponseWriter, player string) {
+	ps.store.RecordWin(player)
+	w.WriteHeader(http.StatusAccepted)
+}
